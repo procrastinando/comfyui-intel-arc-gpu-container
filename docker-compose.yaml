@@ -1,0 +1,55 @@
+services:
+  comfyui:
+    build: .
+    image: comfyui
+    container_name: comfyui
+    restart: unless-stopped
+    shm_size: 8gb
+
+    # Use our VRAM-patching launcher instead of main.py directly
+    command: >
+      /bin/sh -c "pip3 install --break-system-packages GitPython &&
+      python3 /app/launch.py"
+
+    # Pass through the Intel GPU device
+    devices:
+      - "/dev/dri:/dev/dri"
+
+    ports:
+      - '8188:8188'
+
+    volumes:
+      # The VRAM-patching launcher script
+      - ./launch.py:/app/launch.py:ro
+
+      # Persistent model storage (so you don't re-download everything)
+      - ./comfy/output:/app/ComfyUI/output
+      - ./comfy/models:/app/ComfyUI/models
+      - ./comfy/input:/app/ComfyUI/input
+      - ./comfy/custom_nodes:/app/ComfyUI/custom_nodes
+      - ./comfy/user:/app/ComfyUI/user
+
+      # Intel shader cache (persists between restarts, avoids recompilation)
+      - ./comfy/cache:/root/.cache/igc
+
+    environment:
+      # ── Intel XPU Environment Variables ──
+
+      # Force shared memory allocations (critical for iGPU with unified memory)
+      - ZE_INTEL_FORCE_SHARED_MEM=1
+
+      # Pin to GPU device 0 (important if you also have a discrete GPU)
+      - ZE_AFFINITY_MASK=0
+      - ONEAPI_DEVICE_SELECTOR=level_zero:0
+
+      # ── Intel Graphics Compiler Tuning ──
+
+      # Parallel kernel compilation (speeds up first-run shader compilation)
+      - IGC_EnableParallelCompilation=1
+      - IGC_WorkerThreadCount=14
+
+      # Shader cache size (100GB cache prevents recompilation)
+      - IGC_ShaderCacheSizeInMB=102400
+
+      # ── Misc ──
+      - PIP_BREAK_SYSTEM_PACKAGES=1
